@@ -17,6 +17,7 @@
 
 #define MAX_LOADSTRING 100
 
+// 定義選單與功能的 ID 識別碼
 #define IDM_CHOOSE_COLOR 60001
 #define IDM_SAVE_IMAGE   60002 
 #define IDM_UNDO         60003 
@@ -40,13 +41,17 @@ HINSTANCE hInst;
 WCHAR szTitle[MAX_LOADSTRING];
 WCHAR szWindowClass[MAX_LOADSTRING];
 
+// 儲存歷史筆劃的全域變數
 std::vector<Stroke> g_History;
 
+// 這個程式碼模組所包含之函式的向前宣告:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 void                DrawHistory(HDC hdc);
+
+// 原生 Win32 GDI 存檔功能（只使用系統內建 API）
 BOOL                SaveBitmapNativeGDI(HBITMAP hBitmap, const wchar_t* filename);
 BOOL                SaveBitmapWIC(HBITMAP hBitmap, const wchar_t* filename, const wchar_t* mimeType);
 
@@ -65,6 +70,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     LoadStringW(hInstance, IDC_PRINTER, szWindowClass, MAX_LOADSTRING);
     MyRegisterClass(hInstance);
 
+    // 執行應用程式初始化:
     if (!InitInstance(hInstance, nCmdShow))
     {
         CoUninitialize();
@@ -75,6 +81,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     MSG msg;
 
+    // 主訊息迴圈:
     while (GetMessage(&msg, nullptr, 0, 0))
     {
         if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
@@ -240,7 +247,9 @@ BOOL SaveBitmapWIC(HBITMAP hBitmap, const wchar_t* filename, const wchar_t* mime
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
     WNDCLASSEXW wcex;
+
     wcex.cbSize = sizeof(WNDCLASSEX);
+
     wcex.style = CS_HREDRAW | CS_VREDRAW;
     wcex.lpfnWndProc = WndProc;
     wcex.cbClsExtra = 0;
@@ -252,9 +261,11 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
     wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_PRINTER);
     wcex.lpszClassName = szWindowClass;
     wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
     return RegisterClassExW(&wcex);
 }
 
+//   函式: InitInstance(HINSTANCE, int)
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
     hInst = hInstance;
@@ -265,18 +276,22 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
     if (!hWnd) return FALSE;
 
+    // ==================== 動態修改上方功能表 (Menu) ====================
     HMENU hMenu = GetMenu(hWnd);
     if (hMenu) {
+        // 1. 處理原本的「檔案」選單：直接在第一個子選單的最下方新增「儲存圖片」
         HMENU hFileSubMenu = GetSubMenu(hMenu, 0);
         if (hFileSubMenu) {
             AppendMenuW(hFileSubMenu, MF_SEPARATOR, 0, NULL);
             AppendMenuW(hFileSubMenu, MF_STRING, IDM_SAVE_IMAGE, L"儲存圖片(&S)...\tCtrl+S");
         }
 
+        // 2. 處理「色彩」選單：建立色彩管理子選單
         HMENU hColorSubMenu = CreatePopupMenu();
         AppendMenuW(hColorSubMenu, MF_STRING, IDM_CHOOSE_COLOR, L"選擇顏色(&C)...\tC");
         AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hColorSubMenu, L"色彩(&C)");
 
+        // 3. 處理「動作」選單：加入復原、畫筆、橡皮擦
         HMENU hActionSubMenu = CreatePopupMenu();
         AppendMenuW(hActionSubMenu, MF_STRING, IDM_USE_PEN, L"使用畫筆(&P)\tCtrl+P");
         AppendMenuW(hActionSubMenu, MF_STRING, IDM_USE_ERASER, L"使用橡皮擦(&E)\tCtrl+E");
@@ -284,14 +299,18 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
         AppendMenuW(hActionSubMenu, MF_STRING, IDM_UNDO, L"復原上一筆(&U)\tCtrl+Z");
         AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hActionSubMenu, L"動作(&A)");
 
+        // 通知視窗重新整理頂部功能表
         DrawMenuBar(hWnd);
     }
+    // ========================================================================
 
     ShowWindow(hWnd, nCmdShow);
     UpdateWindow(hWnd);
+
     return TRUE;
 }
 
+// 負責繪製所有歷史筆劃的函式
 void DrawHistory(HDC hdc) {
     for (const auto& stroke : g_History) {
         if (stroke.points.size() < 2) continue;
@@ -309,6 +328,7 @@ void DrawHistory(HDC hdc) {
     }
 }
 
+// 完全不使用外部函式庫，純靠 Win32 檔案 API 組裝點陣圖檔案結構
 BOOL SaveBitmapNativeGDI(HBITMAP hBitmap, const wchar_t* filename) {
     HDC hDC = GetDC(NULL);
     BITMAP bmp;
@@ -352,6 +372,7 @@ BOOL SaveBitmapNativeGDI(HBITMAP hBitmap, const wchar_t* filename) {
     return TRUE;
 }
 
+//  函式: WndProc(HWND, UINT, WPARAM, LPARAM)
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     static BOOL isDrawing = FALSE;
@@ -372,6 +393,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_LBUTTONDOWN: {
         isDrawing = TRUE;
         Stroke newStroke;
+
+        // 根據目前模式決定畫筆顏色與粗細
         if (isEraserMode) {
             newStroke.color = RGB(255, 255, 255);
             newStroke.thickness = eraserThickness;
@@ -392,6 +415,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             g_History.back().points.push_back(p);
 
             HDC hdc = GetDC(hWnd);
+
+            // 決定畫布畫線時即時呈現的顏色與粗細
             COLORREF drawColor = isEraserMode ? RGB(255, 255, 255) : currentColor;
             int drawThickness = isEraserMode ? eraserThickness : currentThickness;
 
@@ -426,6 +451,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             SendMessage(hWnd, WM_COMMAND, IDM_USE_PEN, 0);
         else if (wParam == 'C')
             SendMessage(hWnd, WM_COMMAND, IDM_CHOOSE_COLOR, 0);
+        }
         break;
     }
 
@@ -457,6 +483,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             cc.lpCustColors = (LPDWORD)acrCustClr;
             cc.rgbResult = currentColor;
             cc.Flags = CC_FULLOPEN | CC_RGBINIT;
+
             if (ChooseColor(&cc) == TRUE) {
                 currentColor = cc.rgbResult;
                 isEraserMode = FALSE;
@@ -522,8 +549,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                     MessageBoxW(hWnd, L"圖片儲存成功！", L"成功", MB_OK | MB_ICONINFORMATION);
                 else
                     MessageBoxW(hWnd, L"圖片儲存失敗！", L"錯誤", MB_OK | MB_ICONERROR);
+                }
 
                 DeleteObject(memBitmap);
+                DeleteDC(memDC);
+                ReleaseDC(hWnd, hdc);
             }
             break;
         }
@@ -579,6 +609,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
+// [關於] 方塊的訊息處理常式。
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
     UNREFERENCED_PARAMETER(lParam);
@@ -586,6 +617,7 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
     {
     case WM_INITDIALOG:
         return (INT_PTR)TRUE;
+
     case WM_COMMAND:
         if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
         {
