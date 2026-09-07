@@ -116,7 +116,7 @@ BOOL SaveBitmapWIC(HBITMAP hBitmap, const wchar_t* filename, const wchar_t* mime
     if (FAILED(hr)) return FALSE;
 
     // 2. 將 Windows HBITMAP 轉換為 WIC 的點陣圖物件
-    hr = pFactory->CreateBitmapFromHBITMAP(hBitmap, NULL, WICBitmapUseAlpha, &pWICBitmap);
+    hr = pFactory->CreateBitmapFromHBITMAP(hBitmap, NULL, WICBitmapIgnoreAlpha, &pWICBitmap);
     if (FAILED(hr)) {
         pFactory->Release();
         return FALSE;
@@ -451,7 +451,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             SendMessage(hWnd, WM_COMMAND, IDM_USE_PEN, 0);
         else if (wParam == 'C')
             SendMessage(hWnd, WM_COMMAND, IDM_CHOOSE_COLOR, 0);
-        }
         break;
     }
 
@@ -549,11 +548,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                     MessageBoxW(hWnd, L"圖片儲存成功！", L"成功", MB_OK | MB_ICONINFORMATION);
                 else
                     MessageBoxW(hWnd, L"圖片儲存失敗！", L"錯誤", MB_OK | MB_ICONERROR);
-                }
 
                 DeleteObject(memBitmap);
-                DeleteDC(memDC);
-                ReleaseDC(hWnd, hdc);
             }
             break;
         }
