@@ -3,9 +3,10 @@
 
 #include "framework.h"
 #include "printer.h"
-#include <vector> 
+#include <vector>
 #include <string>
 #include <commdlg.h>
+#include <windowsx.h> // GET_X_LPARAM / GET_Y_LPARAM，避免滑鼠負座標被 LOWORD/HIWORD 截斷
 
 // ==================== WIC (Windows 映像處理元件) 引入 ====================
 // 使用微軟官方推薦的 WIC 代替 GDI+，全面免除全域命名空間與巨集污染
@@ -392,6 +393,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     {
     case WM_LBUTTONDOWN: {
         isDrawing = TRUE;
+        SetCapture(hWnd);
         Stroke newStroke;
 
         // 根據目前模式決定畫筆顏色與粗細
@@ -403,7 +405,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             newStroke.color = currentColor;
             newStroke.thickness = currentThickness;
         }
-        DrawPoint p = { LOWORD(lParam), HIWORD(lParam) };
+        DrawPoint p = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
         newStroke.points.push_back(p);
         g_History.push_back(newStroke);
         break;
@@ -411,7 +413,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
     case WM_MOUSEMOVE: {
         if (isDrawing && !g_History.empty()) {
-            DrawPoint p = { LOWORD(lParam), HIWORD(lParam) };
+            DrawPoint p = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+
+            // 加入新點之前先取得目前的最後一點，避免無號數索引下溢
+            DrawPoint lastP = g_History.back().points.back();
             g_History.back().points.push_back(p);
 
             HDC hdc = GetDC(hWnd);
@@ -422,9 +427,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             HPEN hPen = CreatePen(PS_SOLID, drawThickness, drawColor);
             HPEN hOldPen = (HPEN)SelectObject(hdc, hPen);
-
-            size_t sz = g_History.back().points.size();
-            DrawPoint lastP = g_History.back().points[sz - 2];
 
             MoveToEx(hdc, lastP.x, lastP.y, NULL);
             LineTo(hdc, p.x, p.y);
@@ -437,6 +439,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     }
 
     case WM_LBUTTONUP:
+        isDrawing = FALSE;
+        ReleaseCapture();
+        break;
+
+    case WM_CAPTURECHANGED:
+        // 滑鼠擷取被系統或其他視窗搶走時（例如切換視窗），強制結束畫線狀態，
+        // 避免 isDrawing 卡在 TRUE 導致之後滑鼠移動被誤判成繼續畫線。
         isDrawing = FALSE;
         break;
 
@@ -511,6 +520,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
             if (GetSaveFileNameW(&ofn) == TRUE)
             {
+                // 強制依「實際選擇的篩選器」修正副檔名，避免對話框套用固定的
+                // lpstrDefExt(L"png") 導致檔名副檔名與真正寫入的格式不一致
+                // （例如選了 JPEG 篩選器卻沒手動輸入副檔名，結果存出 untitled.png
+                // 但內容其實是 JPEG）。PathRenameExtension 會直接取代既有副檔名，
+                // 或在沒有副檔名時補上，確保檔名永遠對得上實際編碼格式。
+                const wchar_t* correctExt = L".bmp"; // 對應 nFilterIndex == 3(BMP) 或 4(所有檔案，走原生 GDI BMP)
+                if (ofn.nFilterIndex == 1) correctExt = L".png";
+                else if (ofn.nFilterIndex == 2) correctExt = L".jpg";
+                PathRenameExtensionW(szFileName, correctExt);
+
                 HDC hdc = GetDC(hWnd);
                 RECT rect;
                 GetClientRect(hWnd, &rect);
