@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>printer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="menubar">
+      <div class="menu" data-menu="file">
+        <button class="menu-btn">檔案(F)</button>
+        <div class="dropdown">
+          <div class="item" id="mi-import"><span>匯入圖片(I)...</span><span class="accel">Ctrl+I</span></div>
+          <div class="sep"></div>
+          <div class="item" id="mi-save"><span>儲存圖片(S)...</span><span class="accel">Ctrl+S</span></div>
+        </div>
+      </div>
+      <div class="menu" data-menu="color">
+        <button class="menu-btn">色彩(C)</button>
+        <div class="dropdown">
+          <div class="item" id="mi-color"><span>選擇顏色(C)...</span><span class="accel">C</span></div>
+        </div>
+      </div>
+      <div class="menu" data-menu="action">
+        <button class="menu-btn">動作(A)</button>
+        <div class="dropdown">
+          <div class="item" id="mi-pen"><span><span class="chk">✓</span>使用畫筆(P)</span><span class="accel">Ctrl+P</span></div>
+          <div class="item" id="mi-eraser"><span><span class="chk"></span>使用橡皮擦(E)</span><span class="accel">Ctrl+E</span></div>
+          <div class="sep"></div>
+          <div class="item" id="mi-undo"><span>復原上一筆(U)</span><span class="accel">Ctrl+Z</span></div>
+        </div>
+      </div>
+      <div class="menu" data-menu="help">
+        <button class="menu-btn">說明(H)</button>
+        <div class="dropdown">
+          <div class="item" id="mi-about"><span>關於 printer</span><span></span></div>
+        </div>
+      </div>
+
+      <div class="status">
+        <span id="modeLabel">模式：畫筆</span>
+        <span class="swatch" id="colorSwatch"></span>
+      </div>
+    </div>
+
+    <div id="canvasWrap">
+      <canvas id="cv" width="1024" height="768" title="提示：在已放置的圖片上按滑鼠右鍵，可直接刪除該圖片"></canvas>
+      <div id="imgOverlay" hidden>
+        <div class="img-box" id="imgBox">
+          <div class="handle nw" data-dir="nw"></div>
+          <div class="handle ne" data-dir="ne"></div>
+          <div class="handle sw" data-dir="sw"></div>
+          <div class="handle se" data-dir="se"></div>
+        </div>
+        <div class="img-toolbar" id="imgToolbar">
+          <button id="imgCancel">取消</button>
+          <button id="imgCommit" class="primary">完成</button>
+        </div>
+      </div>
+    </div>
+
+    <input type="color" id="colorInput" value="#000000" style="display:none" />
+    <input type="file" id="importInput" accept="image/*" style="display:none" />
+
+    <div class="modal-overlay" id="saveModal" hidden>
+      <div class="modal">
+        <h3>儲存圖片</h3>
+        <label>
+          檔案名稱
+          <input type="text" id="fileNameInput" value="untitled" />
+        </label>
+        <label>
+          格式
+          <select id="formatSelect">
+            <option value="png">PNG 圖片 (*.png)</option>
+            <option value="jpeg">JPEG 圖片 (*.jpg)</option>
+            <option value="bmp">BMP 點陣圖 (*.bmp)</option>
+          </select>
+        </label>
+        <div class="modal-actions">
+          <button id="saveCancel">取消</button>
+          <button id="saveConfirm" class="primary">儲存</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="aboutModal" hidden>
+      <div class="modal">
+        <h3>關於 printer</h3>
+        <p>網頁版小畫家 &mdash; 由 printer.cpp（Win32 GDI 繪圖程式）功能改寫而成，可直接在瀏覽器中畫圖、選色、復原、存檔、匯入圖片。</p>
+        <p>小技巧：在已放置的圖片上按滑鼠右鍵，可以直接刪除該圖片，不必逐筆復原疊在它上面的畫線。</p>
+        <div class="modal-actions"><button class="primary" id="aboutClose">關閉</button></div>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js" defer></script>
+  </body>
+</html>
