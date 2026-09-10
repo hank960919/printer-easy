@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>printer</title>
+<style>
+  :root{
+    --bg:#f0f0f0; --menu-bg:#f3f3f3; --menu-fg:#1e1e1e; --menu-hover:#e0e0e0;
+    --border:#c9c9c9; --canvas-border:#9a9a9a; --panel:#ffffff; --fg:#1e1e1e;
+    --muted:#6e6e6e; --accent:#0b6fb0; --accel:#8a8a8a;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#1e1e1e; --menu-bg:#2b2b2b; --menu-fg:#e6e6e6; --menu-hover:#3a3a3a;
+      --border:#444; --canvas-border:#555; --panel:#252526; --fg:#e6e6e6;
+      --muted:#a0a0a0; --accent:#4ec9f0; --accel:#8a8a8a;
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+    font-family:"Microsoft JhengHei","Segoe UI",-apple-system,Helvetica,Arial,sans-serif;
+    height:100%; overflow:hidden;}
+  body{display:flex; flex-direction:column; height:100vh;}
+
+  /* ---------- 選單列 ---------- */
+  #menubar{
+    display:flex; align-items:center; gap:2px; background:var(--menu-bg);
+    border-bottom:1px solid var(--border); padding:2px 6px; user-select:none; flex:none;
+    position:relative; z-index:20;
+  }
+  .menu{position:relative;}
+  .menu-btn{
+    background:transparent; border:none; color:var(--menu-fg); font-size:13px;
+    padding:6px 10px; cursor:pointer; border-radius:3px;
+  }
+  .menu-btn:hover, .menu.open .menu-btn{background:var(--menu-hover);}
+  .dropdown{
+    display:none; position:absolute; top:100%; left:0; min-width:220px;
+    background:var(--panel); border:1px solid var(--border); border-radius:4px;
+    box-shadow:0 4px 14px rgba(0,0,0,0.2); padding:4px; z-index:30;
+  }
+  .menu.open .dropdown{display:block;}
+  .item{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:6px 10px; font-size:13px; border-radius:3px; cursor:pointer; color:var(--fg);
+    white-space:nowrap;
+  }
+  .item:hover{background:var(--menu-hover);}
+  .item .chk{width:14px; display:inline-block; color:var(--accent);}
+  .item .accel{color:var(--accel); font-size:11px;}
+  .sep{height:1px; background:var(--border); margin:4px 2px;}
+
+  .status{margin-left:auto; display:flex; align-items:center; gap:10px; padding:0 6px; font-size:12px; color:var(--muted);}
+  .swatch{width:16px; height:16px; border-radius:3px; border:1px solid var(--border); background:#000;}
+
+  /* ---------- 畫布區 ---------- */
+  #canvasWrap{
+    flex:1; display:flex; align-items:center; justify-content:center;
+    overflow:auto; padding:16px; min-height:0; position:relative;
+  }
+  #cv{
+    background:#ffffff; border:1px solid var(--canvas-border); box-shadow:0 2px 10px rgba(0,0,0,0.15);
+    touch-action:none; cursor:crosshair; max-width:100%; max-height:100%;
+    width:1024px; height:768px;
+  }
+
+  /* ---------- 圖片放置(拖曳/縮放)覆蓋層 ---------- */
+  #imgOverlay{position:absolute; inset:0; pointer-events:none; z-index:5;}
+  .img-box{
+    position:absolute; border:2px dashed var(--accent); box-sizing:border-box;
+    cursor:move; pointer-events:auto; touch-action:none;
+  }
+  .handle{
+    position:absolute; width:14px; height:14px; margin:-7px; background:var(--accent);
+    border:2px solid #fff; border-radius:50%; pointer-events:auto; touch-action:none;
+    box-shadow:0 1px 3px rgba(0,0,0,0.4);
+  }
+  .handle.nw{left:0; top:0; cursor:nwse-resize;}
+  .handle.ne{left:100%; top:0; cursor:nesw-resize;}
+  .handle.sw{left:0; top:100%; cursor:nesw-resize;}
+  .handle.se{left:100%; top:100%; cursor:nwse-resize;}
+  .img-toolbar{
+    position:absolute; display:flex; gap:6px; pointer-events:auto;
+    transform:translateY(-100%); padding-bottom:8px;
+  }
+  .img-toolbar button{
+    padding:4px 12px; font-size:12px; border-radius:5px; border:1px solid var(--border);
+    background:var(--panel); color:var(--fg); cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.2);
+  }
+  .img-toolbar button.primary{background:var(--accent); color:#fff; border-color:var(--accent);}
+
+  /* ---------- 對話框 ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,0.35); display:flex;
+    align-items:center; justify-content:center; z-index:50;
+  }
+  .modal{
+    background:var(--panel); color:var(--fg); border-radius:8px; padding:20px 22px;
+    width:300px; box-shadow:0 10px 30px rgba(0,0,0,0.3); border:1px solid var(--border);
+  }
+  .modal h3{margin:0 0 14px; font-size:15px;}
+  .modal label{display:block; font-size:12px; color:var(--muted); margin-bottom:12px;}
+  .modal input[type=text], .modal select{
+    display:block; width:100%; margin-top:4px; padding:6px 8px; font-size:13px;
+    background:var(--bg); color:var(--fg); border:1px solid var(--border); border-radius:4px;
+  }
+  .modal p{font-size:13px; line-height:1.6; color:var(--fg);}
+  .modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:6px;}
+  .modal-actions button{
+    padding:6px 14px; font-size:13px; border-radius:5px; border:1px solid var(--border);
+    background:var(--menu-bg); color:var(--fg); cursor:pointer;
+  }
+  .modal-actions button.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .modal-actions button:hover{filter:brightness(1.08);}
+  [hidden]{display:none !important;}
+</style>
+</head>
+<body>
+
+<div id="menubar">
+  <div class="menu" data-menu="file">
+    <button class="menu-btn">檔案(F)</button>
+    <div class="dropdown">
+      <div class="item" id="mi-import"><span>匯入圖片(I)...</span><span class="accel">Ctrl+I</span></div>
+      <div class="sep"></div>
+      <div class="item" id="mi-save"><span>儲存圖片(S)...</span><span class="accel">Ctrl+S</span></div>
+    </div>
+  </div>
+  <div class="menu" data-menu="color">
+    <button class="menu-btn">色彩(C)</button>
+    <div class="dropdown">
+      <div class="item" id="mi-color"><span>選擇顏色(C)...</span><span class="accel">C</span></div>
+    </div>
+  </div>
+  <div class="menu" data-menu="action">
+    <button class="menu-btn">動作(A)</button>
+    <div class="dropdown">
+      <div class="item" id="mi-pen"><span><span class="chk">✓</span>使用畫筆(P)</span><span class="accel">Ctrl+P</span></div>
+      <div class="item" id="mi-eraser"><span><span class="chk"></span>使用橡皮擦(E)</span><span class="accel">Ctrl+E</span></div>
+      <div class="sep"></div>
+      <div class="item" id="mi-undo"><span>復原上一筆(U)</span><span class="accel">Ctrl+Z</span></div>
+    </div>
+  </div>
+  <div class="menu" data-menu="help">
+    <button class="menu-btn">說明(H)</button>
+    <div class="dropdown">
+      <div class="item" id="mi-about"><span>關於 printer</span><span></span></div>
+    </div>
+  </div>
+
+  <div class="status">
+    <span id="modeLabel">模式：畫筆</span>
+    <span class="swatch" id="colorSwatch"></span>
+  </div>
+</div>
+
+<div id="canvasWrap">
+  <canvas id="cv" width="1024" height="768" title="提示：在已放置的圖片上按滑鼠右鍵，可直接刪除該圖片"></canvas>
+  <div id="imgOverlay" hidden>
+    <div class="img-box" id="imgBox">
+      <div class="handle nw" data-dir="nw"></div>
+      <div class="handle ne" data-dir="ne"></div>
+      <div class="handle sw" data-dir="sw"></div>
+      <div class="handle se" data-dir="se"></div>
+    </div>
+    <div class="img-toolbar" id="imgToolbar">
+      <button id="imgCancel">取消</button>
+      <button id="imgCommit" class="primary">完成</button>
+    </div>
+  </div>
+</div>
+
+<input type="color" id="colorInput" value="#000000" style="display:none">
+<input type="file" id="importInput" accept="image/*" style="display:none">
+
+<div class="modal-overlay" id="saveModal" hidden>
+  <div class="modal">
+    <h3>儲存圖片</h3>
+    <label>檔案名稱
+      <input type="text" id="fileNameInput" value="untitled">
+    </label>
+    <label>格式
+      <select id="formatSelect">
+        <option value="png">PNG 圖片 (*.png)</option>
+        <option value="jpeg">JPEG 圖片 (*.jpg)</option>
+        <option value="bmp">BMP 點陣圖 (*.bmp)</option>
+      </select>
+    </label>
+    <div class="modal-actions">
+      <button id="saveCancel">取消</button>
+      <button id="saveConfirm" class="primary">儲存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="aboutModal" hidden>
+  <div class="modal">
+    <h3>關於 printer</h3>
+    <p>網頁版小畫家 &mdash; 由 printer.cpp（Win32 GDI 繪圖程式）功能改寫而成，可直接在瀏覽器中畫圖、選色、復原、存檔、匯入圖片。</p>
+    <p>小技巧：在已放置的圖片上按滑鼠右鍵，可以直接刪除該圖片，不必逐筆復原疊在它上面的畫線。</p>
+    <div class="modal-actions"><button class="primary" id="aboutClose">關閉</button></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var LOGICAL_W = 1024, LOGICAL_H = 768;
+  var canvas = document.getElementById('cv');
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width = LOGICAL_W * dpr;
+  canvas.height = LOGICAL_H * dpr;
+  var ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  var items = []; // 混合畫布內容：{type:'stroke', ...} 或 {type:'image', ...}
+  var currentStroke = null;
+  var isDrawing = false;
+  var isEraser = false;
+  var currentColor = '#000000';
+  var penThickness = 3;
+  var eraserThickness = 20;
+  var activeImage = null; // 匯入後尚未「完成」，可自由拖曳/縮放的圖片
+
+  function clearCanvas(){
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+  }
+
+  function drawStroke(s){
+    if (s.points.length < 2) return;
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = s.thickness;
+    ctx.beginPath();
+    ctx.moveTo(s.points[0].x, s.points[0].y);
+    for (var i = 1; i < s.points.length; i++) ctx.lineTo(s.points[i].x, s.points[i].y);
+    ctx.stroke();
+  }
+
+  function drawImageItem(it){
+    ctx.drawImage(it.img, it.x, it.y, it.w, it.h);
+  }
+
+  function redrawAll(){
+    clearCanvas();
+    items.forEach(function(it){
+      if (it.type === 'image') drawImageItem(it);
+      else drawStroke(it);
+    });
+    if (activeImage) drawImageItem(activeImage);
+  }
+
+  function drawSegment(a, b, color, thickness){
+    ctx.strokeStyle = color;
+    ctx.lineWidth = thickness;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+
+  function getPos(e){
+    var rect = canvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (LOGICAL_W / rect.width),
+      y: (e.clientY - rect.top) * (LOGICAL_H / rect.height)
+    };
+  }
+
+  canvas.addEventListener('pointerdown', function(e){
+    if (activeImage) { commitActiveImage(); return; } // 先確定圖片位置，這一下不畫線
+    canvas.setPointerCapture(e.pointerId);
+    isDrawing = true;
+    var pos = getPos(e);
+    currentStroke = {
+      type: 'stroke',
+      color: isEraser ? '#ffffff' : currentColor,
+      thickness: isEraser ? eraserThickness : penThickness,
+      points: [pos]
+    };
+    items.push(currentStroke);
+  });
+
+  canvas.addEventListener('pointermove', function(e){
+    if (!isDrawing || !currentStroke) return;
+    var pos = getPos(e);
+    var last = currentStroke.points[currentStroke.points.length - 1];
+    currentStroke.points.push(pos);
+    drawSegment(last, pos, currentStroke.color, currentStroke.thickness);
+  });
+
+  function endStroke(e){
+    isDrawing = false;
+    currentStroke = null;
+    try { canvas.releasePointerCapture(e.pointerId); } catch(_){}
+  }
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+  canvas.addEventListener('pointerleave', function(e){ if (isDrawing) endStroke(e); });
+
+  // 在已放置的圖片上按右鍵，可直接刪除該圖片（不必逐筆復原疊在它上面的畫線）
+  canvas.addEventListener('contextmenu', function(e){
+    e.preventDefault();
+    if (activeImage) return; // 正在放置新圖片時不處理
+    var pos = getPos(e);
+    for (var i = items.length - 1; i >= 0; i--) {
+      var it = items[i];
+      if (it.type === 'image' && pos.x >= it.x && pos.x <= it.x + it.w && pos.y >= it.y && pos.y <= it.y + it.h) {
+        if (confirm('要刪除這張圖片嗎？此動作無法用「復原」還原。')) {
+          items.splice(i, 1);
+          redrawAll();
+        }
+        break;
+      }
+    }
+  });
+
+  // ---------- 選單開合 ----------
+  var menus = document.querySelectorAll('.menu');
+  menus.forEach(function(m){
+    var btn = m.querySelector('.menu-btn');
+    btn.addEventListener('click', function(ev){
+      ev.stopPropagation();
+      var wasOpen = m.classList.contains('open');
+      menus.forEach(function(x){ x.classList.remove('open'); });
+      if (!wasOpen) m.classList.add('open');
+    });
+  });
+  document.addEventListener('click', function(){ menus.forEach(function(x){ x.classList.remove('open'); }); });
+
+  // ---------- 狀態列 UI ----------
+  var modeLabel = document.getElementById('modeLabel');
+  var colorSwatch = document.getElementById('colorSwatch');
+  var miPenChk = document.querySelector('#mi-pen .chk');
+  var miEraserChk = document.querySelector('#mi-eraser .chk');
+
+  function updateModeUI(){
+    modeLabel.textContent = '模式：' + (isEraser ? '橡皮擦' : '畫筆');
+    colorSwatch.style.background = isEraser ? '#ffffff' : currentColor;
+    miPenChk.textContent = isEraser ? '' : '✓';
+    miEraserChk.textContent = isEraser ? '✓' : '';
+  }
+
+  function setEraser(v){ isEraser = v; updateModeUI(); }
+
+  document.getElementById('mi-pen').addEventListener('click', function(){ setEraser(false); });
+  document.getElementById('mi-eraser').addEventListener('click', function(){ setEraser(true); });
+
+  document.getElementById('mi-undo').addEventListener('click', undo);
+  function undo(){
+    if (activeImage) { cancelActiveImage(); return; }
+    if (items.length){ items.pop(); redrawAll(); }
+  }
+
+  // ---------- 選色 ----------
+  var colorInput = document.getElementById('colorInput');
+  document.getElementById('mi-color').addEventListener('click', function(){ colorInput.click(); });
+  colorInput.addEventListener('input', function(){
+    currentColor = colorInput.value;
+    isEraser = false;
+    updateModeUI();
+  });
+
+  // ---------- 匯入圖片(可拖曳、縮放，確定後才落版) ----------
+  var importInput = document.getElementById('importInput');
+  var imgOverlay = document.getElementById('imgOverlay');
+  var imgBox = document.getElementById('imgBox');
+  var imgToolbar = document.getElementById('imgToolbar');
+
+  document.getElementById('mi-import').addEventListener('click', function(){ importInput.click(); });
+
+  importInput.addEventListener('change', function(){
+    var file = importInput.files && importInput.files[0];
+    if (!file) return;
+
+    if (activeImage) commitActiveImage(); // 前一張還沒確定的圖，先落版再匯入新的
+
+    var reader = new FileReader();
+    reader.onload = function(){
+      var img = new Image();
+      img.onload = function(){
+        // 若圖片比畫布大，等比縮小到畫布範圍內；否則維持原始大小
+        var scale = Math.min(LOGICAL_W / img.naturalWidth, LOGICAL_H / img.naturalHeight, 1);
+        var w = img.naturalWidth * scale;
+        var h = img.naturalHeight * scale;
+        activeImage = {
+          img: img,
+          x: (LOGICAL_W - w) / 2,
+          y: (LOGICAL_H - h) / 2,
+          w: w,
+          h: h
+        };
+        redrawAll();
+        updatePlacementOverlay();
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+
+    importInput.value = ''; // 允許重複選擇同一張圖片
+  });
+
+  function commitActiveImage(){
+    if (!activeImage) return;
+    items.push({
+      type: 'image', img: activeImage.img,
+      x: activeImage.x, y: activeImage.y, w: activeImage.w, h: activeImage.h
+    });
+    activeImage = null;
+    redrawAll();
+    updatePlacementOverlay();
+  }
+
+  function cancelActiveImage(){
+    if (!activeImage) return;
+    activeImage = null;
+    redrawAll();
+    updatePlacementOverlay();
+  }
+
+  document.getElementById('imgCommit').addEventListener('click', function(e){ e.stopPropagation(); commitActiveImage(); });
+  document.getElementById('imgCancel').addEventListener('click', function(e){ e.stopPropagation(); cancelActiveImage(); });
+
+  function updatePlacementOverlay(){
+    if (!activeImage) { imgOverlay.hidden = true; return; }
+    imgOverlay.hidden = false;
+    var scaleX = canvas.offsetWidth / LOGICAL_W;
+    var scaleY = canvas.offsetHeight / LOGICAL_H;
+    var left = canvas.offsetLeft + activeImage.x * scaleX;
+    var top = canvas.offsetTop + activeImage.y * scaleY;
+    var w = activeImage.w * scaleX;
+    var h = activeImage.h * scaleY;
+    imgBox.style.left = left + 'px';
+    imgBox.style.top = top + 'px';
+    imgBox.style.width = w + 'px';
+    imgBox.style.height = h + 'px';
+    imgToolbar.style.left = left + 'px';
+    imgToolbar.style.top = top + 'px';
+  }
+  window.addEventListener('resize', updatePlacementOverlay);
+
+  // 拖曳移動 / 拖角縮放（等比）
+  var placeDrag = null; // {mode, dir, startX, startY, orig}
+
+  imgBox.addEventListener('pointerdown', function(e){
+    if (e.target.classList.contains('handle')) return;
+    e.stopPropagation();
+    placeDrag = { mode: 'move', startX: e.clientX, startY: e.clientY, orig: Object.assign({}, activeImage) };
+    imgBox.setPointerCapture(e.pointerId);
+  });
+
+  imgBox.querySelectorAll('.handle').forEach(function(handle){
+    handle.addEventListener('pointerdown', function(e){
+      e.stopPropagation();
+      placeDrag = { mode: 'resize', dir: handle.dataset.dir, startX: e.clientX, startY: e.clientY, orig: Object.assign({}, activeImage) };
+      handle.setPointerCapture(e.pointerId);
+    });
+  });
+
+  document.addEventListener('pointermove', function(e){
+    if (!placeDrag || !activeImage) return;
+    var scaleX = canvas.offsetWidth / LOGICAL_W;
+    var scaleY = canvas.offsetHeight / LOGICAL_H;
+    var dx = (e.clientX - placeDrag.startX) / scaleX;
+    var dy = (e.clientY - placeDrag.startY) / scaleY;
+    var o = placeDrag.orig;
+
+    if (placeDrag.mode === 'move') {
+      activeImage.x = o.x + dx;
+      activeImage.y = o.y + dy;
+    } else {
+      var aspect = o.w / o.h;
+      var minSize = 20;
+      var newW = o.w, newH = o.h, newX = o.x, newY = o.y;
+      switch (placeDrag.dir) {
+        case 'se': newW = Math.max(minSize, o.w + dx); newH = newW / aspect; break;
+        case 'nw': newW = Math.max(minSize, o.w - dx); newH = newW / aspect;
+                   newX = o.x + (o.w - newW); newY = o.y + (o.h - newH); break;
+        case 'ne': newW = Math.max(minSize, o.w + dx); newH = newW / aspect;
+                   newY = o.y + (o.h - newH); break;
+        case 'sw': newW = Math.max(minSize, o.w - dx); newH = newW / aspect;
+                   newX = o.x + (o.w - newW); break;
+      }
+      activeImage.w = newW; activeImage.h = newH; activeImage.x = newX; activeImage.y = newY;
+    }
+    redrawAll();
+    updatePlacementOverlay();
+  });
+
+  document.addEventListener('pointerup', function(){ placeDrag = null; });
+  document.addEventListener('pointercancel', function(){ placeDrag = null; });
+
+  // ---------- 儲存圖片 ----------
+  var saveModal = document.getElementById('saveModal');
+  var fileNameInput = document.getElementById('fileNameInput');
+  var formatSelect = document.getElementById('formatSelect');
+
+  function openSaveModal(){
+    fileNameInput.value = 'untitled';
+    formatSelect.value = 'png';
+    saveModal.hidden = false;
+    setTimeout(function(){ fileNameInput.focus(); fileNameInput.select(); }, 0);
+  }
+  document.getElementById('mi-save').addEventListener('click', openSaveModal);
+  document.getElementById('saveCancel').addEventListener('click', function(){ saveModal.hidden = true; });
+
+  function buildExportCanvas(){
+    var c = document.createElement('canvas');
+    c.width = LOGICAL_W; c.height = LOGICAL_H;
+    var cx = c.getContext('2d');
+    cx.lineCap = 'round'; cx.lineJoin = 'round';
+    cx.fillStyle = '#ffffff';
+    cx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+    items.forEach(function(it){
+      if (it.type === 'image') {
+        cx.drawImage(it.img, it.x, it.y, it.w, it.h);
+        return;
+      }
+      if (it.points.length < 2) return;
+      cx.strokeStyle = it.color;
+      cx.lineWidth = it.thickness;
+      cx.beginPath();
+      cx.moveTo(it.points[0].x, it.points[0].y);
+      for (var i = 1; i < it.points.length; i++) cx.lineTo(it.points[i].x, it.points[i].y);
+      cx.stroke();
+    });
+    return c;
+  }
+
+  function encodeBMP(imageData, width, height){
+    var rowSize = Math.floor((width * 3 + 3) / 4) * 4;
+    var pixelArraySize = rowSize * height;
+    var fileSize = 54 + pixelArraySize;
+    var buffer = new ArrayBuffer(fileSize);
+    var view = new DataView(buffer);
+
+    view.setUint8(0, 0x42); view.setUint8(1, 0x4D); // "BM"
+    view.setUint32(2, fileSize, true);
+    view.setUint32(6, 0, true);
+    view.setUint32(10, 54, true);
+
+    view.setUint32(14, 40, true);
+    view.setInt32(18, width, true);
+    view.setInt32(22, height, true);
+    view.setUint16(26, 1, true);
+    view.setUint16(28, 24, true);
+    view.setUint32(30, 0, true);
+    view.setUint32(34, pixelArraySize, true);
+    view.setInt32(38, 2835, true);
+    view.setInt32(42, 2835, true);
+    view.setUint32(46, 0, true);
+    view.setUint32(50, 0, true);
+
+    var data = imageData.data;
+    var offset = 54;
+    for (var y = height - 1; y >= 0; y--) {
+      for (var x = 0; x < width; x++) {
+        var idx = (y * width + x) * 4;
+        view.setUint8(offset++, data[idx + 2]); // B
+        view.setUint8(offset++, data[idx + 1]); // G
+        view.setUint8(offset++, data[idx]);     // R
+      }
+      var pad = rowSize - width * 3;
+      for (var p = 0; p < pad; p++) view.setUint8(offset++, 0);
+    }
+    return new Blob([buffer], { type: 'image/bmp' });
+  }
+
+  function ensureName(name){
+    name = (name || 'untitled').trim();
+    return name.length ? name.replace(/\.[a-zA-Z0-9]+$/, '') : 'untitled';
+  }
+
+  function downloadBlob(blob, filename){
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  }
+
+  function doSave(){
+    var base = ensureName(fileNameInput.value);
+    var fmt = formatSelect.value;
+    var exportC = buildExportCanvas();
+
+    if (fmt === 'png') {
+      exportC.toBlob(function(blob){ downloadBlob(blob, base + '.png'); }, 'image/png');
+    } else if (fmt === 'jpeg') {
+      exportC.toBlob(function(blob){ downloadBlob(blob, base + '.jpg'); }, 'image/jpeg', 0.92);
+    } else {
+      var cx = exportC.getContext('2d');
+      var imgData = cx.getImageData(0, 0, LOGICAL_W, LOGICAL_H);
+      var blob = encodeBMP(imgData, LOGICAL_W, LOGICAL_H);
+      downloadBlob(blob, base + '.bmp');
+    }
+    saveModal.hidden = true;
+  }
+  document.getElementById('saveConfirm').addEventListener('click', doSave);
+  fileNameInput.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') { e.preventDefault(); doSave(); }
+    e.stopPropagation();
+  });
+
+  // ---------- 關於 ----------
+  var aboutModal = document.getElementById('aboutModal');
+  document.getElementById('mi-about').addEventListener('click', function(){ aboutModal.hidden = false; });
+  document.getElementById('aboutClose').addEventListener('click', function(){ aboutModal.hidden = true; });
+
+  // ---------- 鍵盤快捷鍵 ----------
+  document.addEventListener('keydown', function(e){
+    var typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA');
+    var ctrl = e.ctrlKey || e.metaKey;
+    var key = e.key.toLowerCase();
+
+    if (activeImage && !typing) {
+      if (key === 'enter') { e.preventDefault(); commitActiveImage(); return; }
+      if (key === 'escape') { e.preventDefault(); cancelActiveImage(); return; }
+    }
+
+    if (ctrl && key === 'z') { e.preventDefault(); undo(); }
+    else if (ctrl && key === 's') { e.preventDefault(); openSaveModal(); }
+    else if (ctrl && key === 'e') { e.preventDefault(); setEraser(true); }
+    else if (ctrl && key === 'p') { e.preventDefault(); setEraser(false); }
+    else if (ctrl && key === 'i') { e.preventDefault(); importInput.click(); }
+    else if (!ctrl && !typing && key === 'c') { colorInput.click(); }
+  });
+
+  // ---------- 初始化 ----------
+  clearCanvas();
+  updateModeUI();
+})();
+</script>
+</body>
+</html>
